@@ -583,19 +583,32 @@ button.principal:hover, button.principal:focus-visible { filter: brightness(1.08
     var agora = Date.now(), ultima = lerJSON(CHAVE_VISITA) || 0;
     if (agora - ultima > 30 * 60 * 1000) { registrar('visita', location.hash || ''); gravarJSON(CHAVE_VISITA, agora); }
   }
+  // Nome de verdade: 2 palavras ou mais, só letras, sem termos genéricos.
+  var NAO_NOME = ['visitante', 'visita', 'svc', 'xpt', 'teste', 'test', 'nome', 'sobrenome', 'usuario', 'anonimo', 'desconhecido', 'dispatcher', 'coordenacao', 'mercado', 'livre', 'meli', 'dll'];
+  var LIGACAO = ['de', 'da', 'do', 'das', 'dos', 'e'];
+  function nomeValido(nome) {
+    var t = String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    if (!/^[a-z' -]+$/.test(t)) return false;
+    var partes = t.split(/\s+/);
+    if (partes.some(function (p) { return NAO_NOME.indexOf(p) >= 0 || /^(.)\1+$/.test(p); })) return false;
+    return partes.filter(function (p) { return p.length >= 2 && LIGACAO.indexOf(p) < 0; }).length >= 2;
+  }
   var ident = document.getElementById('ident');
   function pedirIdentificacao() { ident.hidden = false; setTimeout(function () { document.getElementById('id-nome').focus(); }, 50); }
   document.getElementById('id-ok').addEventListener('click', function () {
     var nome = document.getElementById('id-nome').value.trim().replace(/\s+/g, ' ');
     var xpt = document.getElementById('id-xpt').value;
     var erro = document.getElementById('id-erro');
-    if (nome.split(' ').length < 2) { erro.textContent = 'Escreva nome e sobrenome.'; return; }
+    if (!nomeValido(nome)) { erro.textContent = 'Escreva seu nome e sobrenome verdadeiros. "Visitante/SVC" é escolhido no campo XPT, não no nome.'; return; }
     if (!xpt) { erro.textContent = 'Escolha o seu XPT.'; return; }
     gravarJSON(CHAVE_ID, { nome: nome, xpt: xpt });
     ident.hidden = true; erro.textContent = '';
     gravarJSON(CHAVE_VISITA, 0); visita();
   });
-  if (lerJSON(CHAVE_ID)) { visita(); } else { pedirIdentificacao(); }
+  var quemSalvo = lerJSON(CHAVE_ID);
+  // Quem entrou antes como "Visitante" (ou com nome inválido) se identifica de novo.
+  if (quemSalvo && nomeValido(quemSalvo.nome)) { visita(); }
+  else { try { localStorage.removeItem(CHAVE_ID); } catch (e) {} pedirIdentificacao(); }
 
   // Checklist completo também é registrado (uma vez por dia).
   caixas.forEach(function (c) {
