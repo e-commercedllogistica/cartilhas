@@ -569,7 +569,7 @@ button.principal:hover, button.principal:focus-visible { filter: brightness(1.08
 <div class="ident" id="ident" hidden>
   <form class="caixa" id="form-ident" onsubmit="return false">
     <h2>Antes de começar</h2>
-    <p>Informe seu nome e sobrenome e escolha o seu XPT. É só desta vez: o aparelho lembra. Não é de um XPT? Escolha Visitante/SVC.</p>
+    <p>Informe seu nome e sobrenome (os dois, de verdade) e escolha o seu XPT. É só desta vez: o aparelho lembra. Não é de um XPT? Escolha Visitante/SVC ou Outro.</p>
     <label for="id-nome">Nome e sobrenome<input id="id-nome" autocomplete="name" maxlength="60" placeholder="Ex.: Maria Souza"></label>
     <label for="id-xpt">Seu XPT<select id="id-xpt">
       <option value="">Escolha…</option>
@@ -577,6 +577,7 @@ button.principal:hover, button.principal:focus-visible { filter: brightness(1.08
       <option>SGO7</option><option>SGO12</option><option>SGO19</option><option>SGO20</option><option>SGO21</option>
       <option>SMS1</option><option>SMS3</option><option>Outro</option><option>Visitante/SVC</option>
     </select></label>
+    <label for="id-origem" id="lbl-origem" hidden>De onde você é?<input id="id-origem" maxlength="40" placeholder="Ex.: SVC SGO3, coordenação, transportadora"></label>
     <p class="erro-msg" id="id-erro"></p>
     <button type="button" class="principal" id="id-ok">Entrar na cartilha</button>
     <small>As visitas e a confirmação de leitura são registradas para acompanhar o uso da cartilha.</small>
@@ -631,23 +632,38 @@ button.principal:hover, button.principal:focus-visible { filter: brightness(1.08
     if (!/^[a-z' -]+$/.test(t)) return false;
     var partes = t.split(/\s+/);
     if (partes.some(function (p) { return NAO_NOME.indexOf(p) >= 0 || /^(.)\1+$/.test(p); })) return false;
-    return partes.filter(function (p) { return p.length >= 2 && LIGACAO.indexOf(p) < 0; }).length >= 2;
+    // 13/11/2026: primeiro nome com 3+ letras e nome diferente do sobrenome ("Maria Maria" não vale).
+    var fortes = partes.filter(function (p) { return p.length >= 2 && LIGACAO.indexOf(p) < 0; });
+    if (fortes.length < 2 || partes[0].length < 3) return false;
+    return fortes.some(function (p) { return p !== fortes[0]; });
   }
   var ident = document.getElementById('ident');
   function pedirIdentificacao() { ident.hidden = false; setTimeout(function () { document.getElementById('id-nome').focus(); }, 50); }
+  // "Outro" (13/11/2026): pede de onde a pessoa é, e isso vai junto no registro ("Outro: SVC SGO3").
+  var selXpt = document.getElementById('id-xpt'), lblOrigem = document.getElementById('lbl-origem'), inOrigem = document.getElementById('id-origem');
+  selXpt.addEventListener('change', function () {
+    lblOrigem.hidden = selXpt.value !== 'Outro';
+    if (!lblOrigem.hidden) setTimeout(function () { inOrigem.focus(); }, 30);
+  });
   document.getElementById('id-ok').addEventListener('click', function () {
     var nome = document.getElementById('id-nome').value.trim().replace(/\s+/g, ' ');
-    var xpt = document.getElementById('id-xpt').value;
+    var xpt = selXpt.value;
     var erro = document.getElementById('id-erro');
-    if (!nomeValido(nome)) { erro.textContent = 'Escreva seu nome e sobrenome verdadeiros. "Visitante/SVC" é escolhido no campo XPT, não no nome.'; return; }
+    if (!nomeValido(nome)) { erro.textContent = 'Escreva seu nome e sobrenome verdadeiros (ex.: Maria Souza). "Visitante/SVC" é escolhido no campo XPT, não no nome.'; return; }
     if (!xpt) { erro.textContent = 'Escolha o seu XPT.'; return; }
+    if (xpt === 'Outro') {
+      var origem = inOrigem.value.trim().replace(/\s+/g, ' ');
+      if (!/[A-Za-zÀ-ÿ]{2,}/.test(origem) || origem.length < 3) { erro.textContent = 'Escreva de onde você é (ex.: SVC SGO3, coordenação).'; inOrigem.focus(); return; }
+      xpt = 'Outro: ' + origem;
+    }
     gravarJSON(CHAVE_ID, { nome: nome, xpt: xpt });
     ident.hidden = true; erro.textContent = '';
     gravarJSON(CHAVE_VISITA, 0); visita();
   });
   var quemSalvo = lerJSON(CHAVE_ID);
   // Quem entrou antes como "Visitante" (ou com nome inválido) se identifica de novo.
-  if (quemSalvo && nomeValido(quemSalvo.nome)) { visita(); }
+  // Quem tinha escolhido "Outro" sem dizer de onde também se identifica de novo (13/11/2026).
+  if (quemSalvo && nomeValido(quemSalvo.nome) && quemSalvo.xpt !== 'Outro') { visita(); }
   else { try { localStorage.removeItem(CHAVE_ID); } catch (e) {} pedirIdentificacao(); }
 
   // Checklist completo também é registrado (uma vez por dia).
